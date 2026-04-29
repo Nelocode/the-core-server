@@ -31,7 +31,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', engine: 'The Core Engine v1.0' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT as number, '0.0.0.0', () => {
   console.log(`🚀 The Core Engine running on port ${PORT}`);
 });
 
