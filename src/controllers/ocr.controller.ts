@@ -2,8 +2,11 @@ import { Request, Response } from 'express';
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
+import OpenAI from 'openai';
 
-const N8N_SCAN_URL = process.env.N8N_SCAN_CARD_URL;
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 export const scanCard = async (req: Request, res: Response) => {
   if (!req.file) {
@@ -20,29 +23,59 @@ export const scanCard = async (req: Request, res: Response) => {
       .jpeg({ quality: 80 })
       .toFile(optimizedPath);
 
-    // 2. Prepare for n8n call
-    if (!N8N_SCAN_URL) {
-      throw new Error('N8N_SCAN_CARD_URL not configured on server');
+    // 2. Read file as base64
+    const imageBuffer = fs.readFileSync(optimizedPath);
+    const base64Image = imageBuffer.toString('base64');
+    const imageUrl = `data:image/jpeg;base64,${base64Image}`;
+
+    // 3. Call OpenAI Vision API
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is not configured on server');
     }
 
-    // Convert optimized image to base64 or send as FormData
-    const imageBuffer = fs.readFileSync(optimizedPath);
-    const formData = new FormData();
-    const blob = new Blob([imageBuffer], { type: 'image/jpeg' });
-    formData.append('image', blob, 'card.jpg');
-
-    const n8nResponse = await fetch(N8N_SCAN_URL, {
-      method: 'POST',
-      body: formData
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert OCR AI designed to extract information from business cards.
+Analyze the image of the business card and extract the following information.
+You must return ONLY a valid JSON object matching this exact structure, with no markdown formatting or extra text:
+{
+  "name": "Full Name",
+  "role": "Job Title",
+  "company": "Company Name",
+  "email": "Email Address",
+  "phone": "Phone Number"
+}
+If any field is missing or cannot be read, return null for that field. Do not make up information.`
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Extract the details from this business card.' },
+            {
+              type: 'image_url',
+              image_url: {
+                url: imageUrl,
+                detail: 'high'
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 500,
+      response_format: { type: "json_object" }
     });
 
-    if (!n8nResponse.ok) {
-      throw new Error('n8n processing failed');
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error('OpenAI returned an empty response');
     }
 
-    const result = await n8nResponse.json();
+    const result = JSON.parse(content);
 
-    // 3. Cleanup
+    // 4. Cleanup
     fs.unlinkSync(filePath);
     fs.unlinkSync(optimizedPath);
 
