@@ -9,24 +9,37 @@ const openai = new OpenAI({
 });
 
 export const scanCard = async (req: Request, res: Response) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No image provided' });
+  const files = req.files as Express.Multer.File[];
+  if (!files || files.length === 0) {
+    return res.status(400).json({ error: 'No images provided' });
   }
 
-  const filePath = req.file.path;
-  const optimizedPath = path.join('uploads', `optimized-${req.file.filename}.jpg`);
+  const optimizedPaths: string[] = [];
+  const imageUrls: any[] = [];
 
   try {
-    // 1. Optimize image using Sharp
-    await sharp(filePath)
-      .resize(1000) // Resize to 1000px width
-      .jpeg({ quality: 80 })
-      .toFile(optimizedPath);
+    // Process each file
+    for (const file of files) {
+      const optimizedPath = path.join('uploads', `optimized-${file.filename}.jpg`);
+      optimizedPaths.push(optimizedPath);
 
-    // 2. Read file as base64
-    const imageBuffer = fs.readFileSync(optimizedPath);
-    const base64Image = imageBuffer.toString('base64');
-    const imageUrl = `data:image/jpeg;base64,${base64Image}`;
+      // 1. Optimize image using Sharp
+      await sharp(file.path)
+        .resize(1000) // Resize to 1000px width
+        .jpeg({ quality: 80 })
+        .toFile(optimizedPath);
+
+      // 2. Read file as base64
+      const imageBuffer = fs.readFileSync(optimizedPath);
+      const base64Image = imageBuffer.toString('base64');
+      imageUrls.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:image/jpeg;base64,${base64Image}`,
+          detail: 'high'
+        }
+      });
+    }
 
     // 3. Call OpenAI Vision API
     if (!process.env.OPENAI_API_KEY) {
@@ -38,30 +51,25 @@ export const scanCard = async (req: Request, res: Response) => {
       messages: [
         {
           role: 'system',
-          content: `You are an expert OCR AI designed to extract information from business cards.
-Analyze the image of the business card and extract the following information.
+          content: `You are an expert OCR AI designed to extract information from business cards. You may receive 1 or 2 images (front and back of the card).
+Analyze all the images and combine the information to extract the following fields.
 You must return ONLY a valid JSON object matching this exact structure, with no markdown formatting or extra text:
 {
   "name": "Full Name",
   "role": "Job Title",
   "company": "Company Name",
   "email": "Email Address",
+  "website": "Company Website URL or Personal Website",
   "phone": "Phone Number",
   "location": "Physical Address or City/Country"
 }
-If any field is missing or cannot be read, return null for that field. Do not make up information.`
+If any field is missing or cannot be read across all images, return null for that field. Do not make up information.`
         },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Extract the details from this business card.' },
-            {
-              type: 'image_url',
-              image_url: {
-                url: imageUrl,
-                detail: 'high'
-              }
-            }
+            { type: 'text', text: 'Extract the details from this business card (images include front and potentially back).' },
+            ...imageUrls
           ]
         }
       ],
@@ -77,16 +85,18 @@ If any field is missing or cannot be read, return null for that field. Do not ma
     const result = JSON.parse(content);
 
     // 4. Cleanup
-    fs.unlinkSync(filePath);
-    fs.unlinkSync(optimizedPath);
+    for (const file of files) fs.unlinkSync(file.path);
+    for (const p of optimizedPaths) fs.unlinkSync(p);
 
     res.json(result);
   } catch (error: any) {
     console.error('OCR Controller Error:', error);
     
     // Cleanup on error
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    if (fs.existsSync(optimizedPath)) fs.unlinkSync(optimizedPath);
+    if (files) {
+      for (const file of files) if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+    }
+    for (const p of optimizedPaths) if (fs.existsSync(p)) fs.unlinkSync(p);
 
     res.status(500).json({ error: error.message || 'Internal Server Error' });
   }

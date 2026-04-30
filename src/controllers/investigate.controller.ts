@@ -7,7 +7,7 @@ const openai = new OpenAI({
 
 export const investigateContact = async (req: Request, res: Response) => {
   try {
-    const { name, company, role, location } = req.body;
+    const { name, company, role, location, website } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Name is required for investigation' });
     }
@@ -21,8 +21,9 @@ export const investigateContact = async (req: Request, res: Response) => {
         const roleStr = role ? `"${role}"` : '';
         const companyStr = company ? `"${company}"` : '';
         const locationStr = location ? `"${location}"` : '';
+        const websiteStr = website ? `site:${website} OR "${website}"` : '';
         // Create a highly precise query string avoiding empty quotes
-        const queryParts = [`"${name}"`, roleStr, companyStr, locationStr, 'professional profile bio linkedin'];
+        const queryParts = [`"${name}"`, roleStr, companyStr, locationStr, websiteStr, 'professional profile bio linkedin'];
         const query = queryParts.filter(Boolean).join(' ');
 
         const tavilyResponse = await fetch('https://api.tavily.com/search', {
@@ -53,7 +54,8 @@ export const investigateContact = async (req: Request, res: Response) => {
 Analyze the provided web search context about the person "${name}" 
 ${company ? `from the company "${company}"` : ''} 
 ${role ? `with the role of "${role}"` : ''} 
-${location ? `based in "${location}"` : ''}.
+${location ? `based in "${location}"` : ''}
+${website ? `associated with website "${website}"` : ''}.
 Extract or infer the following details to build a highly precise CRM profile.
 You must return ONLY a valid JSON object matching this exact structure:
 {
@@ -61,7 +63,8 @@ You must return ONLY a valid JSON object matching this exact structure:
   "location": "Physical location or city/country (string or null)",
   "hobbies": ["array of strings representing hobbies, passions or interests. Infer if not explicitly stated (e.g. Golf, Tech)"],
   "notes": "A brief summary of their current professional focus, recent news, or an interesting fact",
-  "role": "Their exact current job title if found, otherwise null"
+  "role": "Their exact current job title if found, otherwise null",
+  "icebreaker": "A specific sentence or topic to break the ice based on their hobbies or notes. E.g. 'I saw you are into Golf, did you catch the Masters?'"
 }`;
 
     const completion = await openai.chat.completions.create({
