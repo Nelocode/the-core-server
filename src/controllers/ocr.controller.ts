@@ -46,7 +46,8 @@ You must return ONLY a valid JSON object matching this exact structure, with no 
   "role": "Job Title",
   "company": "Company Name",
   "email": "Email Address",
-  "phone": "Phone Number"
+  "phone": "Phone Number",
+  "location": "Physical Address or City/Country"
 }
 If any field is missing or cannot be read, return null for that field. Do not make up information.`
         },
