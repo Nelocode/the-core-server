@@ -8,7 +8,7 @@ dotenv.config();
 
 const app = express();
 const prisma = new PrismaClient();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -25,6 +25,10 @@ app.post('/api/investigate', (req, res) => {
       notes: 'Expanding market reach in EMEA through strategic acquisitions.'
     });
   }, 2000);
+});
+
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', engine: 'The Core Engine' });
 });
 
 app.get('/health', (req, res) => {
