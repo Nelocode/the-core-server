@@ -16,14 +16,35 @@ model Contact {
   role              String?
   company           String?
   email             String?
+  website           String?
   phone             String?
   avatar            String?
   location          String?
-  birthday          DateTime?
-  hobbies           String? // Stored as comma-separated
+  birthday          String?
+  category          String?
+  hobbies           String? // Comma-separated or JSON
   relationshipScore Int      @default(50)
   notes             String?
-  lastContact       DateTime @default(now())
+  
+  // Complex objects stored as JSON strings for SQLite compatibility in Prisma
+  family            String? // { spouse, children }
+  interactions      String? // Array of Interaction objects
+  captureMetadata   String? // { capturedAt, meetingLocation, lat, lng }
+  intelligence      String? // { icebreaker, keyInterests, communicationStyle }
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model Meeting {
+  id          String   @id @default(uuid())
+  title       String
+  startTime   DateTime
+  endTime     DateTime
+  attendees   String   // Comma-separated Contact IDs
+  location    String
+  description String?
+  status      String   @default("upcoming")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

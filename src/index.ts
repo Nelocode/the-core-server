@@ -3,6 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import ocrRoutes from './routes/ocr.routes';
+import transcribeRoutes from './routes/transcribe.routes';
+import contactRoutes from './routes/contact.routes';
 import { investigateContact } from './controllers/investigate.controller';
 
 dotenv.config();
@@ -16,6 +18,8 @@ app.use(express.json());
 
 // Routes
 app.use('/api/ocr', ocrRoutes);
+app.use('/api/transcribe', transcribeRoutes);
+app.use('/api/contacts', contactRoutes);
 
 app.post('/api/investigate', investigateContact);
 
