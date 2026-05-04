@@ -5,6 +5,10 @@ import { PrismaClient } from '@prisma/client';
 import ocrRoutes from './routes/ocr.routes';
 import transcribeRoutes from './routes/transcribe.routes';
 import contactRoutes from './routes/contact.routes';
+import organizationRoutes from './routes/organization.routes';
+import interactionRoutes from './routes/interaction.routes';
+import tagRoutes from './routes/tag.routes';
+import noteRoutes from './routes/note.routes';
 import { investigateContact } from './controllers/investigate.controller';
 
 dotenv.config();
@@ -24,6 +28,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api/ocr', ocrRoutes);
 app.use('/api/transcribe', transcribeRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/organizations', organizationRoutes);
+app.use('/api/interactions', interactionRoutes);
+app.use('/api/tags', tagRoutes);
+app.use('/api/notes', noteRoutes);
 app.post('/api/investigate', investigateContact);
 
 app.get('/', (req, res) => {

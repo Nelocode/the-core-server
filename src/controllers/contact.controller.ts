@@ -1,31 +1,51 @@
 import { Request, Response } from 'express';
 import { prisma } from '../index';
 
-// Helper to parse JSON fields safely
-const parseJson = (str: string | null) => {
-  if (!str) return undefined;
-  try { return JSON.parse(str); } catch { return undefined; }
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const contactInclude = {
+  organization: true,
+  tags: { include: { tag: true } },
+  notes: { orderBy: { isPinned: 'desc' as const, createdAt: 'desc' as const } },
+  interactions: { orderBy: { date: 'desc' as const }, take: 10 },
+  meetings: { include: { meeting: true } }
 };
 
-// Helper to stringify JSON fields
-const stringifyJson = (val: any) => {
-  if (val === undefined || val === null) return null;
-  return JSON.stringify(val);
-};
-
-// Format a raw Prisma contact into the shape the frontend expects
 const formatContact = (c: any) => ({
   ...c,
   hobbies: c.hobbies ? c.hobbies.split(',').map((h: string) => h.trim()).filter(Boolean) : [],
-  family: parseJson(c.family),
-  interactions: parseJson(c.interactions) || [],
-  captureMetadata: parseJson(c.captureMetadata),
-  intelligence: parseJson(c.intelligence)
+  aiKeyInterests: c.aiKeyInterests ? c.aiKeyInterests.split(',').map((i: string) => i.trim()).filter(Boolean) : [],
+  tags: c.tags?.map((ct: any) => ct.tag) ?? [],
+  // Legacy-compatible shape for the frontend
+  company: c.organization?.name ?? null,
+  website: c.organization?.website ?? null,
+  interactions: c.interactions ?? [],
+  family: c.spouseName || c.childrenCount
+    ? { spouse: c.spouseName, children: c.childrenCount }
+    : null,
+  intelligence: {
+    icebreaker: c.aiIcebreaker,
+    strategicContext: c.aiStrategicContext,
+    sentiment: c.aiSentiment,
+    keyInterests: c.aiKeyInterests ? c.aiKeyInterests.split(',').map((i: string) => i.trim()) : []
+  },
+  captureMetadata: c.capturedAt ? {
+    capturedAt: c.capturedAt,
+    meetingLocation: c.captureLocation,
+    latitude: c.captureLat,
+    longitude: c.captureLng,
+    source: c.captureSource
+  } : null
 });
+
+// ─── Handlers ────────────────────────────────────────────────────────────────
 
 export const getContacts = async (req: Request, res: Response) => {
   try {
-    const contacts = await prisma.contact.findMany({ orderBy: { createdAt: 'desc' } });
+    const contacts = await prisma.contact.findMany({
+      include: contactInclude,
+      orderBy: { createdAt: 'desc' }
+    });
     res.json(contacts.map(formatContact));
   } catch (error) {
     console.error('Error fetching contacts:', error);
@@ -33,42 +53,83 @@ export const getContacts = async (req: Request, res: Response) => {
   }
 };
 
+export const getContactById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const contact = await prisma.contact.findUnique({
+      where: { id },
+      include: {
+        ...contactInclude,
+        interactions: { orderBy: { date: 'desc' as const } }, // All interactions for detail view
+        notes: { orderBy: [{ isPinned: 'desc' as const }, { createdAt: 'desc' as const }] }
+      }
+    });
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+    res.json(formatContact(contact));
+  } catch (error) {
+    console.error('Error fetching contact:', error);
+    res.status(500).json({ error: 'Failed to fetch contact' });
+  }
+};
+
 export const createContact = async (req: Request, res: Response) => {
   try {
     const data = req.body;
-    if (!data.name || !data.name.trim()) {
-      return res.status(400).json({ error: 'Name is required' });
+    if (!data.name?.trim()) return res.status(400).json({ error: 'Name is required' });
+
+    // Handle organization: resolve by ID or create by name
+    let organizationId: string | null = data.organizationId ?? null;
+    if (!organizationId && data.company?.trim()) {
+      const org = await prisma.organization.upsert({
+        where: { name: data.company.trim() } as any,
+        update: {},
+        create: { name: data.company.trim(), website: data.website }
+      });
+      organizationId = org.id;
     }
 
     const contact = await prisma.contact.create({
       data: {
         id: data.id,
         name: data.name.trim(),
-        role: data.role || '',
-        company: data.company || '',
-        email: data.email || '',
-        website: data.website,
-        phone: data.phone,
-        avatar: data.avatar,
-        location: data.location || '',
-        birthday: data.birthday,
-        category: data.category,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+        avatar: data.avatar ?? null,
+        birthday: data.birthday ?? null,
+        location: data.location ?? null,
+        linkedin: data.linkedin ?? null,
+        twitter: data.twitter ?? null,
+        role: data.role ?? null,
+        department: data.department ?? null,
+        seniority: data.seniority ?? null,
         relationshipScore: data.relationshipScore ?? 50,
-        notes: data.notes || '',
-        hobbies: Array.isArray(data.hobbies) ? data.hobbies.join(', ') : (data.hobbies || ''),
-        family: stringifyJson(data.family),
-        interactions: stringifyJson(data.interactions || []),
-        captureMetadata: stringifyJson(data.captureMetadata),
-        intelligence: stringifyJson(data.intelligence)
-      }
+        engagementLevel: data.engagementLevel ?? null,
+        communicationStyle: data.communicationStyle ?? null,
+        preferredChannel: data.preferredChannel ?? null,
+        spouseName: data.family?.spouse ?? null,
+        childrenCount: data.family?.children?.length ?? null,
+        hobbies: Array.isArray(data.hobbies) ? data.hobbies.join(', ') : (data.hobbies ?? null),
+        personalNotes: data.notes ?? null,
+        aiIcebreaker: data.intelligence?.icebreaker ?? null,
+        aiStrategicContext: data.intelligence?.strategicContext ?? null,
+        aiSentiment: data.intelligence?.sentiment ?? null,
+        aiKeyInterests: Array.isArray(data.intelligence?.keyInterests)
+          ? data.intelligence.keyInterests.join(', ')
+          : null,
+        capturedAt: data.captureMetadata?.capturedAt ? new Date(data.captureMetadata.capturedAt) : null,
+        captureSource: data.captureMetadata?.source ?? data.captureSource ?? null,
+        captureLocation: data.captureMetadata?.meetingLocation ?? null,
+        captureLat: data.captureMetadata?.latitude ?? null,
+        captureLng: data.captureMetadata?.longitude ?? null,
+        organizationId
+      },
+      include: contactInclude
     });
 
     res.status(201).json(formatContact(contact));
   } catch (error: any) {
     console.error('Error creating contact:', error);
-    if (error?.code === 'P2002') {
-      return res.status(409).json({ error: 'A contact with this ID already exists' });
-    }
+    if (error?.code === 'P2002') return res.status(409).json({ error: 'Contact with this ID already exists' });
     res.status(500).json({ error: 'Failed to create contact' });
   }
 };
@@ -77,39 +138,60 @@ export const updateContact = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const data = req.body;
-    if (!data.name || !data.name.trim()) {
-      return res.status(400).json({ error: 'Name is required' });
+    if (!data.name?.trim()) return res.status(400).json({ error: 'Name is required' });
+
+    let organizationId: string | undefined = data.organizationId;
+    if (!organizationId && data.company?.trim()) {
+      const org = await prisma.organization.upsert({
+        where: { name: data.company.trim() } as any,
+        update: {},
+        create: { name: data.company.trim(), website: data.website }
+      });
+      organizationId = org.id;
     }
 
     const contact = await prisma.contact.update({
       where: { id },
       data: {
         name: data.name.trim(),
-        role: data.role || '',
-        company: data.company || '',
-        email: data.email || '',
-        website: data.website,
-        phone: data.phone,
-        avatar: data.avatar,
-        location: data.location || '',
-        birthday: data.birthday,
-        category: data.category,
+        email: data.email ?? null,
+        phone: data.phone ?? null,
+        avatar: data.avatar ?? null,
+        birthday: data.birthday ?? null,
+        location: data.location ?? null,
+        linkedin: data.linkedin ?? null,
+        twitter: data.twitter ?? null,
+        role: data.role ?? null,
+        department: data.department ?? null,
+        seniority: data.seniority ?? null,
         relationshipScore: data.relationshipScore ?? 50,
-        notes: data.notes || '',
-        hobbies: Array.isArray(data.hobbies) ? data.hobbies.join(', ') : (data.hobbies || ''),
-        family: stringifyJson(data.family),
-        interactions: stringifyJson(data.interactions || []),
-        captureMetadata: stringifyJson(data.captureMetadata),
-        intelligence: stringifyJson(data.intelligence)
-      }
+        engagementLevel: data.engagementLevel ?? null,
+        communicationStyle: data.communicationStyle ?? null,
+        preferredChannel: data.preferredChannel ?? null,
+        spouseName: data.family?.spouse ?? null,
+        childrenCount: data.family?.children?.length ?? null,
+        hobbies: Array.isArray(data.hobbies) ? data.hobbies.join(', ') : (data.hobbies ?? null),
+        personalNotes: data.notes ?? null,
+        aiIcebreaker: data.intelligence?.icebreaker ?? null,
+        aiStrategicContext: data.intelligence?.strategicContext ?? null,
+        aiSentiment: data.intelligence?.sentiment ?? null,
+        aiKeyInterests: Array.isArray(data.intelligence?.keyInterests)
+          ? data.intelligence.keyInterests.join(', ')
+          : null,
+        capturedAt: data.captureMetadata?.capturedAt ? new Date(data.captureMetadata.capturedAt) : null,
+        captureSource: data.captureMetadata?.source ?? null,
+        captureLocation: data.captureMetadata?.meetingLocation ?? null,
+        captureLat: data.captureMetadata?.latitude ?? null,
+        captureLng: data.captureMetadata?.longitude ?? null,
+        organizationId: organizationId ?? null
+      },
+      include: contactInclude
     });
 
     res.json(formatContact(contact));
   } catch (error: any) {
     console.error('Error updating contact:', error);
-    if (error?.code === 'P2025') {
-      return res.status(404).json({ error: 'Contact not found' });
-    }
+    if (error?.code === 'P2025') return res.status(404).json({ error: 'Contact not found' });
     res.status(500).json({ error: 'Failed to update contact' });
   }
 };
@@ -121,10 +203,7 @@ export const deleteContact = async (req: Request, res: Response) => {
     res.status(204).send();
   } catch (error: any) {
     console.error('Error deleting contact:', error);
-    if (error?.code === 'P2025') {
-      // Already deleted — idempotent response
-      return res.status(204).send();
-    }
+    if (error?.code === 'P2025') return res.status(204).send();
     res.status(500).json({ error: 'Failed to delete contact' });
   }
 };

@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// The Core — Irwin-style IRM Data Model
+// 8 related models: Organization, Contact, Interaction, Tag, ContactTag, Meeting, MeetingAttendee, Note
 
 generator client {
   provider = "prisma-client-js"
@@ -10,41 +10,193 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Contact {
-  id                String   @id @default(uuid())
-  name              String
-  role              String?
-  company           String?
-  email             String?
-  website           String?
-  phone             String?
-  avatar            String?
-  location          String?
-  birthday          String?
-  category          String?
-  hobbies           String? // Comma-separated or JSON
-  relationshipScore Int      @default(50)
-  notes             String?
-  
-  // Complex objects stored as JSON strings for SQLite compatibility in Prisma
-  family            String? // { spouse, children }
-  interactions      String? // Array of Interaction objects
-  captureMetadata   String? // { capturedAt, meetingLocation, lat, lng }
-  intelligence      String? // { icebreaker, keyInterests, communicationStyle }
+// ─── Organization ─────────────────────────────────────────────────────────────
+// Represents a company, fund, institution, or any organization a contact belongs to.
+// Inspired by Irwin's "Institution" profile concept.
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+model Organization {
+  id          String    @id @default(uuid())
+  name        String
+  domain      String?   // e.g. thorne.com
+  industry    String?   // tech, finance, healthcare, real-estate...
+  size        String?   // startup, sme, enterprise
+  website     String?
+  location    String?
+  description String?
+  logoUrl     String?
+
+  contacts    Contact[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
+// ─── Contact ──────────────────────────────────────────────────────────────────
+// Core entity. Represents an individual. Can be linked to an Organization.
+// Organization is optional to allow "casual" contacts without a formal institution.
+
+model Contact {
+  id               String    @id @default(uuid())
+  name             String
+  email            String?
+  phone            String?
+  avatar           String?
+  birthday         String?
+  location         String?
+  linkedin         String?
+  twitter          String?
+
+  // Professional identity
+  role             String?
+  department       String?
+  seniority        String?   // c-suite, vp, director, manager, individual
+
+  // Relationship intelligence (Irwin-style scoring)
+  relationshipScore  Int     @default(50)
+  engagementLevel    String? // hot, warm, cold, inactive
+  communicationStyle String? // formal, casual, data-driven
+  preferredChannel   String? // email, phone, linkedin, in-person
+
+  // Personal intelligence (for icebreakers and rapport)
+  spouseName       String?
+  childrenCount    Int?
+  hobbies          String?   // comma-separated
+  personalNotes    String?   // private notes
+
+  // AI-generated intelligence (updated via /api/investigate)
+  aiIcebreaker       String?
+  aiStrategicContext String?
+  aiSentiment        String? // positive, neutral, negative
+  aiKeyInterests     String? // comma-separated AI-extracted interests
+
+  // Capture provenance
+  capturedAt       DateTime?
+  captureSource    String?   // card_scan, manual, import, linkedin
+  captureLocation  String?   // where they were met
+  captureLat       Float?
+  captureLng       Float?
+
+  // Optional link to an Organization
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  // Relations
+  interactions     Interaction[]
+  tags             ContactTag[]
+  notes            Note[]
+  meetings         MeetingAttendee[]
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+// ─── Interaction ──────────────────────────────────────────────────────────────
+// Every touchpoint with a contact — meeting, call, email, event, note.
+// Irwin calls these "Activity Logs" and treats them as first-class entities.
+
+model Interaction {
+  id           String    @id @default(uuid())
+  type         String    // meeting, call, email, linkedin, event, note
+  date         DateTime
+  summary      String
+  sentiment    String?   // positive, neutral, negative
+  duration     Int?      // minutes
+  location     String?
+  isRemote     Boolean   @default(false)
+
+  // Follow-up tracking (Irwin's pipeline management)
+  followUpDue  DateTime?
+  followUpDone Boolean   @default(false)
+  outcome      String?   // closed_deal, next_meeting, no_action, follow_up
+
+  contactId    String
+  contact      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  // Optional link to a formal Meeting (multi-attendee event)
+  meetingId    String?
+  meeting      Meeting?  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// ─── Tag ──────────────────────────────────────────────────────────────────────
+// Reusable labels for segmenting contacts.
+// Irwin uses these for investor targeting and segmentation.
+
+model Tag {
+  id       String       @id @default(uuid())
+  name     String       @unique
+  color    String?      // hex color, e.g. #FF4444
+  contacts ContactTag[]
+
+  createdAt DateTime    @default(now())
+}
+
+// ─── ContactTag ───────────────────────────────────────────────────────────────
+// Many-to-many pivot: Contact ↔ Tag
+
+model ContactTag {
+  contactId String
+  tagId     String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([contactId, tagId])
+}
+
+// ─── Meeting ──────────────────────────────────────────────────────────────────
+// A formal event with multiple attendees — roadshows, conferences, group sessions.
+// Irwin treats these separately from 1-on-1 interactions.
+
 model Meeting {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   title       String
   startTime   DateTime
   endTime     DateTime
-  attendees   String   // Comma-separated Contact IDs
-  location    String
+  location    String?
+  isRemote    Boolean   @default(false)
   description String?
-  status      String   @default("upcoming")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String    @default("upcoming") // upcoming, completed, cancelled
+  agenda      String?
+  outcomes    String?
+  recordingUrl String?
+
+  attendees    MeetingAttendee[]
+  interactions Interaction[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// ─── MeetingAttendee ──────────────────────────────────────────────────────────
+// Many-to-many pivot: Meeting ↔ Contact, with role context.
+
+model MeetingAttendee {
+  meetingId String
+  contactId String
+  role      String?   // host, attendee, optional
+  meeting   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, contactId])
+}
+
+// ─── Note ─────────────────────────────────────────────────────────────────────
+// Free-form notes about a contact. Separate from Interaction to allow
+// permanent pinned intelligence distinct from chronological activity log.
+
+model Note {
+  id        String   @id @default(uuid())
+  content   String
+  isPinned  Boolean  @default(false)
+  isPrivate Boolean  @default(false)
+
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
