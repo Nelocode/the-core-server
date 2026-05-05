@@ -4,7 +4,12 @@ exports.deleteOrganization = exports.updateOrganization = exports.createOrganiza
 const index_1 = require("../index");
 const getOrganizations = async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const take = 100;
+        const skip = (page - 1) * take;
         const orgs = await index_1.prisma.organization.findMany({
+            take,
+            skip,
             include: { contacts: { select: { id: true, name: true, role: true, avatar: true } } },
             orderBy: { name: 'asc' }
         });

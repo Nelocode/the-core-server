@@ -19,12 +19,25 @@ const investigateContact = async (req, res) => {
         // 1. Perform Web Search with Tavily if available
         if (tavilyKey) {
             try {
-                const roleStr = role ? `"${role}"` : '';
-                const companyStr = company ? `"${company}"` : '';
-                const locationStr = location ? `"${location}"` : '';
-                const websiteStr = website ? `site:${website} OR "${website}"` : '';
+                // Helper function to safely escape quotes to prevent query injection
+                const safeQuery = (val) => val ? `"${val.replace(/"/g, '')}"` : '';
+                // Extract a safe hostname for the website (no paths, schemas, or special search operators)
+                let safeWebsite = '';
+                if (website) {
+                    try {
+                        const parsedUrl = new URL(website.startsWith('http') ? website : `https://${website}`);
+                        safeWebsite = parsedUrl.hostname;
+                    }
+                    catch (e) {
+                        safeWebsite = ''; // Ignore invalid URLs
+                    }
+                }
+                const roleStr = safeQuery(role);
+                const companyStr = safeQuery(company);
+                const locationStr = safeQuery(location);
+                const websiteStr = safeWebsite ? `site:${safeWebsite} OR "${safeWebsite}"` : '';
                 // Create a highly precise query string avoiding empty quotes
-                const queryParts = [`"${name}"`, roleStr, companyStr, locationStr, websiteStr, 'professional profile bio linkedin'];
+                const queryParts = [safeQuery(name), roleStr, companyStr, locationStr, websiteStr, 'professional profile bio linkedin'];
                 const query = queryParts.filter(Boolean).join(' ');
                 const tavilyResponse = await fetch('https://api.tavily.com/search', {
                     method: 'POST',

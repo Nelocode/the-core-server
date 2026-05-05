@@ -42,7 +42,13 @@ const formatContact = (c: any) => ({
 
 export const getContacts = async (req: Request, res: Response) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const take = 100;
+    const skip = (page - 1) * take;
+
     const contacts = await prisma.contact.findMany({
+      take,
+      skip,
       include: contactInclude,
       orderBy: { createdAt: 'desc' }
     });

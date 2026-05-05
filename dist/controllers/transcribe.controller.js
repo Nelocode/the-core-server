@@ -15,8 +15,9 @@ const transcribeAudio = async (req, res) => {
         if (!req.file) {
             return res.status(400).json({ error: 'No audio file provided' });
         }
-        // OpenAI Whisper expects a file on disk or a readable stream with a filename
-        const tempFilePath = path_1.default.join(__dirname, `../../temp_${Date.now()}_${req.file.originalname}`);
+        // Generate a safe, random filename without relying on user-provided originalname
+        const safeFilename = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.webm`;
+        const tempFilePath = path_1.default.join(__dirname, `../../${safeFilename}`);
         fs_1.default.writeFileSync(tempFilePath, req.file.buffer);
         const transcription = await openai.audio.transcriptions.create({
             file: fs_1.default.createReadStream(tempFilePath),

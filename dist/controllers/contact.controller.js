@@ -39,7 +39,12 @@ const formatContact = (c) => ({
 // ─── Handlers ────────────────────────────────────────────────────────────────
 const getContacts = async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const take = 100;
+        const skip = (page - 1) * take;
         const contacts = await index_1.prisma.contact.findMany({
+            take,
+            skip,
             include: contactInclude,
             orderBy: { createdAt: 'desc' }
         });
