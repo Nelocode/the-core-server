@@ -22,7 +22,12 @@ exports.getInteractions = getInteractions;
 // Get all pending follow-ups across all contacts
 const getPendingFollowUps = async (req, res) => {
     try {
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const take = 100;
+        const skip = (page - 1) * take;
         const followUps = await index_1.prisma.interaction.findMany({
+            take,
+            skip,
             where: {
                 followUpDone: false,
                 followUpDue: { not: null }

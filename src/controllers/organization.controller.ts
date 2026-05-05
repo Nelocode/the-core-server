@@ -3,7 +3,13 @@ import { prisma } from '../index';
 
 export const getOrganizations = async (req: Request, res: Response) => {
   try {
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const take = 100;
+    const skip = (page - 1) * take;
+
     const orgs = await prisma.organization.findMany({
+      take,
+      skip,
       include: { contacts: { select: { id: true, name: true, role: true, avatar: true } } },
       orderBy: { name: 'asc' }
     });
