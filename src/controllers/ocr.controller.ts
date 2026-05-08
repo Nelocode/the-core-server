@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
 import sharp from 'sharp';
-import fs from 'fs';
-import path from 'path';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -14,23 +12,22 @@ export const scanCard = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'No images provided' });
   }
 
-  const optimizedPaths: string[] = [];
   const imageUrls: any[] = [];
 
   try {
     // Process each file
     for (const file of files) {
-      const optimizedPath = path.join('uploads', `optimized-${file.filename}.jpg`);
-      optimizedPaths.push(optimizedPath);
+      if (!file.buffer) {
+        throw new Error('File buffer missing. Ensure multer is using memoryStorage.');
+      }
 
-      // 1. Optimize image using Sharp
-      await sharp(file.path)
+      // 1. Optimize image using Sharp directly from buffer to buffer
+      const imageBuffer = await sharp(file.buffer)
         .resize(1000) // Resize to 1000px width
         .jpeg({ quality: 80 })
-        .toFile(optimizedPath);
+        .toBuffer();
 
-      // 2. Read file as base64
-      const imageBuffer = fs.readFileSync(optimizedPath);
+      // 2. Convert optimized buffer to base64
       const base64Image = imageBuffer.toString('base64');
       imageUrls.push({
         type: 'image_url',
@@ -84,20 +81,9 @@ If any field is missing or cannot be read across all images, return null for tha
 
     const result = JSON.parse(content);
 
-    // 4. Cleanup
-    for (const file of files) fs.unlinkSync(file.path);
-    for (const p of optimizedPaths) fs.unlinkSync(p);
-
     res.json(result);
   } catch (error: any) {
     console.error('OCR Controller Error:', error);
-    
-    // Cleanup on error
-    if (files) {
-      for (const file of files) if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-    }
-    for (const p of optimizedPaths) if (fs.existsSync(p)) fs.unlinkSync(p);
-
     res.status(500).json({ error: error.message || 'Internal Server Error' });
   }
 };
