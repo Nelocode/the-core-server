@@ -16,6 +16,8 @@ export const transcribeAudio = async (req: Request, res: Response) => {
     const transcription = await openai.audio.transcriptions.create({
       file: file,
       model: 'whisper-1',
+      language: 'es',
+      prompt: 'Transcripción de notas de voz. El usuario está dictando información de un contacto.',
     });
 
     res.json({ text: transcription.text });
